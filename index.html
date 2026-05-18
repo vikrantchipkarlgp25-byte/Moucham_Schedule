@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LG-AUP 2026 — Junior Track Schedule</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } }
+    }
+  </script>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/date-fns@3/cdn.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #F3F2FC; margin: 0; }
+    .hide-scroll::-webkit-scrollbar { display: none; }
+    .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp 0.22s ease-out both; }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .slide-down { animation: slideDown 0.18s ease-out both; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+const {
+  format, addDays, addMonths, subMonths,
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek,
+  isSameDay, isSameMonth, isToday, getDay,
+  differenceInMinutes, addMinutes, isAfter,
+  startOfDay, endOfDay, parseISO
+} = dateFns;
+
+// ─── PROGRAM DATES ────────────────────────────────────────────────────────────
+// Arrival: May 16. Orientation & program start: May 17. End: June 14.
+const PROG_DISPLAY_START = new Date(2026, 4, 16); // May 16 (arrival)
+const PROG_START         = new Date(2026, 4, 17); // May 17 (orientation)
+const PROG_END           = new Date(2026, 5, 14); // Jun 14
+const FIRST_MONDAY       = new Date(2026, 4, 18); // May 18 (Week 1 Day 1)
+
+// ─── JUNIOR TRACK COURSES (user's allocated courses) ─────────────────────────
+const WEEK_COURSES = {
+  1: { morningName: 'Fundamentals of Investing: Actualizing Financial Independence', morningVenue: 'AC-04-LR-005', afternoonName: 'Mind Control, Bio-Hacking & Stranger Things',    afternoonVenue: 'AC-02-LR-013' },
+  2: { morningName: 'The Probabilistic Method',                                      morningVenue: 'AC-04-LR-302', afternoonName: 'Why Art for Science Students...',                afternoonVenue: 'AC-02-LR-013' },
+  3: { morningName: 'Trignometry',                                                   morningVenue: 'AC-04-LR-302', afternoonName: 'Exploring The Microcosm',                         afternoonVenue: 'AC-02-LR-003' },
+  4: { morningName: 'Introduction to Cryptography',                                  morningVenue: 'AC-04-LR-302', afternoonName: 'Changemakers in Sustainability: SDG Goals',       afternoonVenue: 'AC-04-LR-303' },
+};
+
+// ─── GREAT IDEAS SEMINARS (Mandatory for All, 12:00–1:30 PM) ─────────────────
+const GIS = {
+  '2026-05-19': { speaker: 'Shankar Balasubramanian', venue: 'AC-02 LR-007, Takshila' },
+  '2026-05-20': { speaker: 'Steve Brusatte',          venue: 'AC-02 LR-007, Takshila' },
+  '2026-05-22': { speaker: 'Shubhanshu Shukla',       venue: 'AC-02 LR-007, Takshila' },
+  '2026-05-25': { speaker: 'Anurag Agarwal',          venue: 'AC-02 LR-007, Takshila' },
+  '2026-05-28': { speaker: 'Anantharam Raghuram',     venue: 'AC-02 LR-007, Takshila' },
+  '2026-06-03': { speaker: 'Rajula Srivastava',       venue: 'AC-02 LR-007, Takshila' },
+  '2026-06-03': { speaker: 'Van der Sluys',           venue: 'AC-02 LR-007, Takshila' },
+};
+
+// ─── SPECIAL DAY SCHEDULES ────────────────────────────────────────────────────
+// Each block: { id, type, label, start, end, venue, speaker, optKey, note }
+// Types: breakfast|lunch|dinner|mandatory|course|seminar|open|optional|free|sleep|arrival
+
+const SPECIAL = {
+  '2026-05-16': [
+    { id: 's1', type: 'arrival',   label: 'Arrival at Ashoka University Campus', start: '00:00', end: '23:59', venue: 'Ashoka University, Sonipat', note: 'Selected candidates arrive and settle into campus accommodation today.' },
+  ],
+  '2026-05-17': [
+    { id: 'o0',  type: 'sleep',     label: 'Sleep',                                                start: '00:00', end: '08:00' },
+    { id: 'o1',  type: 'breakfast', label: 'Breakfast',                                             start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'o2',  type: 'free',      label: 'Free / Settle In',                                      start: '09:00', end: '10:00' },
+    { id: 'o3',  type: 'mandatory', label: 'Opening Address',                                        start: '10:00', end: '10:30', venue: "Dr. Reddy's Auditorium", note: 'By Prof. Somak Raychaudhury, Ashish Singh & Dr. Anupama Ambika Anilkumar' },
+    { id: 'o4',  type: 'mandatory', label: 'Orientation: LG-AUP 2026',                              start: '10:30', end: '11:30', venue: "Dr. Reddy's Auditorium" },
+    { id: 'o5',  type: 'mandatory', label: 'Library Session',                                        start: '11:45', end: '12:30', venue: "Dr. Reddy's Auditorium" },
+    { id: 'o6',  type: 'lunch',     label: 'Lunch',                                                  start: '12:30', end: '13:45', venue: 'Dining Hall' },
+    { id: 'o7',  type: 'mandatory', label: 'Orientation: Diversity & Inclusion',                     start: '14:00', end: '15:30', venue: "Dr. Reddy's Auditorium" },
+    { id: 'o8',  type: 'mandatory', label: 'Orientation: Respect, Rights & Responsibilities',        start: '15:30', end: '16:45', venue: "Dr. Reddy's Auditorium" },
+    { id: 'o9',  type: 'mandatory', label: 'Orientation: Student Wellbeing & Mental Health',         start: '17:00', end: '18:00', venue: "Dr. Reddy's Auditorium" },
+    { id: 'o10', type: 'free',      label: 'Free Time / Explore Campus',                             start: '18:00', end: '20:00' },
+    { id: 'o11', type: 'dinner',    label: 'Dinner',                                                  start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'o12', type: 'sleep',     label: 'Sleep',                                                  start: '22:00', end: '24:00' },
+  ],
+  '2026-05-23': [
+    { id: 'w1s1',  type: 'sleep',     label: 'Sleep',                                                              start: '00:00', end: '08:00' },
+    { id: 'w1s2',  type: 'breakfast', label: 'Breakfast',                                                           start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'w1s3',  type: 'free',      label: 'Free Time',                                                           start: '09:00', end: '10:30' },
+    { id: 'w1s4',  type: 'open',      label: 'JoVE Workshop: From Curiosity to Evidence',                           start: '10:30', end: '13:00', venue: 'AC-02 LR-007 (Takshila)', note: 'Open to all students' },
+    { id: 'w1s5',  type: 'lunch',     label: 'Lunch',                                                               start: '13:00', end: '14:30', venue: 'Dining Hall' },
+    { id: 'w1s6',  type: 'free',      label: 'Free Time / Rest',                                                    start: '14:30', end: '20:00' },
+    { id: 'w1s7',  type: 'dinner',    label: 'Dinner',                                                              start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'w1s8',  type: 'optional',  label: 'Astrophotography Field Trip',                                         start: '20:30', end: '24:00', venue: 'Manesar Observatory', optKey: 'sat-may23-astro', note: 'Overnight — Selected candidates only' },
+    { id: 'w1s9',  type: 'sleep',     label: 'Sleep',                                                               start: '22:00', end: '24:00' },
+  ],
+  '2026-05-24': [
+    { id: 'w1u1',  type: 'sleep',     label: 'Sleep',                                                               start: '00:00', end: '08:00' },
+    { id: 'w1u2',  type: 'breakfast', label: 'Breakfast',                                                            start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'w1u3',  type: 'free',      label: 'Free Time',                                                            start: '09:00', end: '10:30' },
+    { id: 'w1u4',  type: 'optional',  label: 'From the Dust of this Planet: A Practical & Theoretical Apparatus for the Observer', start: '10:30', end: '12:30', venue: 'AC-02 LR-007 (Takshila)', optKey: 'sun-may24-am', note: 'Selected candidates only' },
+    { id: 'w1u5',  type: 'lunch',     label: 'Lunch',                                                               start: '13:00', end: '14:30', venue: 'Dining Hall' },
+    { id: 'w1u6',  type: 'optional',  label: 'Laws of Flying — Learn to Build & Fly Your Own Aircraft',             start: '14:30', end: '17:30', venue: 'Admin MPH / Sunken Field', optKey: 'sun-may24-pm', note: 'Selected candidates only' },
+    { id: 'w1u7',  type: 'free',      label: 'Free Time',                                                            start: '17:30', end: '20:00' },
+    { id: 'w1u8',  type: 'dinner',    label: 'Dinner',                                                              start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'w1u9',  type: 'sleep',     label: 'Sleep',                                                               start: '22:00', end: '24:00' },
+  ],
+  '2026-05-30': [
+    { id: 'w2s1',  type: 'sleep',     label: 'Sleep',                                                               start: '00:00', end: '08:00' },
+    { id: 'w2s2',  type: 'breakfast', label: 'Breakfast',                                                            start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'w2s3',  type: 'free',      label: 'Free Time',                                                            start: '09:00', end: '10:00' },
+    { id: 'w2s4',  type: 'optional',  label: 'FutureBuilders Lab: Real Problems, Real Prototypes & An Entrepreneurial Mindset', start: '10:00', end: '13:00', venue: 'Admin MPH', optKey: 'sat-may30-am', note: 'Selected candidates only' },
+    { id: 'w2s5',  type: 'lunch',     label: 'Lunch',                                                               start: '13:00', end: '14:30', venue: 'Dining Hall' },
+    { id: 'w2s6',  type: 'optional',  label: 'Interdisciplinary Education with Toys from Trash',                    start: '15:30', end: '17:00', venue: 'Sports MPH', optKey: 'sat-may30-pm', note: 'Selected candidates only' },
+    { id: 'w2s7',  type: 'free',      label: 'Free Time',                                                            start: '17:00', end: '20:00' },
+    { id: 'w2s8',  type: 'dinner',    label: 'Dinner',                                                              start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'w2s9',  type: 'optional',  label: 'Astrophotography Field Trip',                                         start: '20:30', end: '24:00', venue: 'Manesar Observatory', optKey: 'sat-may30-astro', note: 'Overnight — Selected candidates only' },
+    { id: 'w2s10', type: 'sleep',     label: 'Sleep',                                                               start: '22:00', end: '24:00' },
+  ],
+  '2026-05-31': [
+    { id: 'w2u1',  type: 'sleep',     label: 'Sleep',                                                               start: '00:00', end: '08:00' },
+    { id: 'w2u2',  type: 'breakfast', label: 'Breakfast',                                                            start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'w2u3',  type: 'free',      label: 'Free Time',                                                            start: '09:00', end: '11:00' },
+    { id: 'w2u4',  type: 'mandatory', label: 'Think, Search, Cite: Foundations of Academic Research Library',       start: '11:00', end: '12:30', venue: 'AC-02 LR-007 (Takshila)', note: 'Mandatory for all students' },
+    { id: 'w2u5',  type: 'lunch',     label: 'Lunch',                                                               start: '13:00', end: '14:30', venue: 'Dining Hall' },
+    { id: 'w2u6',  type: 'optional',  label: 'Interdisciplinary Education with Toys from Trash',                    start: '14:30', end: '17:30', venue: 'AC-04-LR-005', optKey: 'sun-may31-pm', note: 'Selected candidates only' },
+    { id: 'w2u7',  type: 'free',      label: 'Free Time',                                                            start: '17:30', end: '20:00' },
+    { id: 'w2u8',  type: 'dinner',    label: 'Dinner',                                                              start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'w2u9',  type: 'sleep',     label: 'Sleep',                                                               start: '22:00', end: '24:00' },
+  ],
+  '2026-06-06': [
+    { id: 'w3s1',  type: 'sleep',     label: 'Sleep',                                                               start: '00:00', end: '08:00' },
+    { id: 'w3s2',  type: 'breakfast', label: 'Breakfast',                                                            start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'w3s3',  type: 'free',      label: 'Free Time',                                                            start: '09:00', end: '10:30' },
+    { id: 'w3s4',  type: 'optional',  label: 'Radio Telescope Workshop',                                            start: '10:30', end: '17:00', venue: 'Admin MPH', optKey: 'sat-jun6-radio', note: 'Selected candidates — all day session' },
+    { id: 'w3s5',  type: 'lunch',     label: 'Lunch',                                                               start: '13:00', end: '14:30', venue: 'Dining Hall' },
+    { id: 'w3s6',  type: 'free',      label: 'Free Time',                                                            start: '17:00', end: '20:00' },
+    { id: 'w3s7',  type: 'dinner',    label: 'Dinner',                                                              start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'w3s8',  type: 'optional',  label: 'Astrophotography Field Trip',                                         start: '20:30', end: '24:00', venue: 'Manesar Observatory', optKey: 'sat-jun6-astro', note: 'Overnight — Selected candidates only' },
+    { id: 'w3s9',  type: 'sleep',     label: 'Sleep',                                                               start: '22:00', end: '24:00' },
+  ],
+  '2026-06-07': [
+    { id: 'w3u1',  type: 'sleep',     label: 'Sleep',                                                               start: '00:00', end: '08:00' },
+    { id: 'w3u2',  type: 'breakfast', label: 'Breakfast',                                                            start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'w3u3',  type: 'free',      label: 'Free Time',                                                            start: '09:00', end: '10:00' },
+    { id: 'w3u4',  type: 'optional',  label: 'Financial Literacy',                                                  start: '10:00', end: '13:00', venue: 'AC-02 LR-007 (Takshila)', optKey: 'sun-jun7-am', note: 'Selected candidates only' },
+    { id: 'w3u5',  type: 'lunch',     label: 'Lunch',                                                               start: '13:00', end: '14:30', venue: 'Dining Hall' },
+    { id: 'w3u6',  type: 'optional',  label: 'Radio Telescope Workshop (continued)',                                 start: '14:30', end: '17:00', venue: 'Admin MPH', optKey: 'sun-jun7-pm', note: 'Selected candidates only' },
+    { id: 'w3u7',  type: 'free',      label: 'Free Time',                                                            start: '17:00', end: '20:00' },
+    { id: 'w3u8',  type: 'dinner',    label: 'Dinner',                                                              start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'w3u9',  type: 'sleep',     label: 'Sleep',                                                               start: '22:00', end: '24:00' },
+  ],
+  '2026-06-13': [
+    { id: 'cl1',  type: 'sleep',     label: 'Sleep',                                                                start: '00:00', end: '08:00' },
+    { id: 'cl2',  type: 'breakfast', label: 'Breakfast',                                                             start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'cl3',  type: 'free',      label: 'Free Time / Packing',                                                   start: '09:00', end: '13:00' },
+    { id: 'cl4',  type: 'lunch',     label: 'Lunch',                                                                start: '13:00', end: '14:30', venue: 'Dining Hall' },
+    { id: 'cl5',  type: 'free',      label: 'Closing Activities',                                                    start: '14:30', end: '20:00', note: 'Final day of LG-AUP 2026' },
+    { id: 'cl6',  type: 'dinner',    label: 'Dinner',                                                               start: '20:00', end: '21:30', venue: 'Dining Hall' },
+    { id: 'cl7',  type: 'sleep',     label: 'Sleep',                                                                start: '22:00', end: '24:00' },
+  ],
+  '2026-06-14': [
+    { id: 'dp1', type: 'sleep',     label: 'Sleep',                                                                  start: '00:00', end: '08:00' },
+    { id: 'dp2', type: 'breakfast', label: 'Breakfast',                                                               start: '08:00', end: '09:00', venue: 'Dining Hall' },
+    { id: 'dp3', type: 'free',      label: 'Departure / Travel Home',                                                 start: '09:00', end: '24:00', note: 'Program officially ends. Safe travels!' },
+  ],
+};
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+function dateKey(date) { return format(date, 'yyyy-MM-dd'); }
+
+function inDisplayProgram(date) {
+  return date >= startOfDay(PROG_DISPLAY_START) && date <= endOfDay(PROG_END);
+}
+function inActiveProgram(date) {
+  return date >= startOfDay(PROG_START) && date <= endOfDay(PROG_END);
+}
+
+function programWeek(date) {
+  const diff = Math.floor((date - FIRST_MONDAY) / 86400000);
+  if (diff < 0 || diff > 25) return null;
+  return Math.floor(diff / 7) + 1;
+}
+
+function fmt12(str) {
+  if (!str || str === '24:00') return '12:00 AM';
+  const [h, m] = str.split(':').map(Number);
+  const ap = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ap}`;
+}
+
+function timeOnDate(str, base) {
+  if (str === '24:00') return addDays(startOfDay(base), 1);
+  const [h, m] = str.split(':').map(Number);
+  const d = new Date(base);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function buildSchedule(date, choices) {
+  const key = dateKey(date);
+
+  // Special days (orientation, weekends, arrival, departure)
+  if (SPECIAL[key]) {
+    return SPECIAL[key].map(b => {
+      if (b.type === 'optional') {
+        const chosen = choices[b.optKey];
+        if (chosen === true)  return { ...b, type: 'course', subject: 'Selected Activity' };
+        if (chosen === false) return { ...b, type: 'free', label: 'Free Time' };
+      }
+      return b;
+    });
+  }
+
+  if (!inActiveProgram(date)) return null;
+
+  const dow = getDay(date); // 0=Sun, 6=Sat
+  if (dow === 0 || dow === 6) return null; // Weekend with no special schedule = null
+
+  const wk = programWeek(date);
+  if (!wk) return null;
+  const c = WEEK_COURSES[wk];
+  const gis = GIS[key];
+
+  const blocks = [
+    { id: 'sl1', type: 'sleep',     label: 'Sleep',      start: '00:00', end: '08:00' },
+    { id: 'bf',  type: 'breakfast', label: 'Breakfast',  start: '08:00', end: '08:45', venue: 'Dining Hall' },
+    { id: 'fr1', type: 'free',      label: 'Get Ready',  start: '08:45', end: '09:00' },
+    { id: 'mor', type: 'course',    label: c.morningName, name: c.morningName, subject: 'Junior Track — Mathematics', venue: c.morningVenue, start: '09:00', end: '12:00', note: 'Tea Break: 10:30–10:45 AM' },
+  ];
+
+  if (gis) {
+    blocks.push({ id: 'gis', type: 'seminar',   label: `Great Ideas Seminar`, name: `Great Ideas Seminar`, speaker: gis.speaker, venue: gis.venue, start: '12:00', end: '13:30', subject: 'Mandatory For All' });
+    blocks.push({ id: 'lu',  type: 'lunch',     label: 'Lunch', start: '13:30', end: '14:30', venue: 'Dining Hall' });
+  } else {
+    blocks.push({ id: 'fr2', type: 'free',      label: 'Free Time',  start: '12:00', end: '13:00' });
+    blocks.push({ id: 'lu',  type: 'lunch',     label: 'Lunch',      start: '13:00', end: '14:30', venue: 'Dining Hall' });
+  }
+
+  blocks.push({ id: 'aft', type: 'course',    label: c.afternoonName, name: c.afternoonName, subject: 'Junior Track — Science', venue: c.afternoonVenue, start: '14:30', end: '17:30', note: 'Tea Break included' });
+  blocks.push({ id: 'fr3', type: 'free',      label: 'Free Time / Tea',   start: '17:30', end: '20:00' });
+  blocks.push({ id: 'din', type: 'dinner',    label: 'Dinner',             start: '20:00', end: '21:30', venue: 'Dining Hall' });
+  blocks.push({ id: 'sl2', type: 'sleep',     label: 'Sleep',              start: '22:00', end: '24:00' });
+
+  return blocks;
+}
+
+// ─── ICONS ────────────────────────────────────────────────────────────────────
+const Moon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+const Pin     = () => <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>;
+const Clk     = () => <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+const Fork    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>;
+const Star    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+const ChevL   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
+const ChevR   = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;
+const BellSVG = () => <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
+const CalIco  = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5B4FE8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+const InfoIco = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
+const PersonIco = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+
+// ─── OPTIONAL CARD ────────────────────────────────────────────────────────────
+function OptionalCard({ block, onChoose }) {
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-purple-200 bg-white p-4 fade-up">
+      <span className="inline-block text-xs font-bold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full uppercase tracking-wide mb-3">
+        Selected Candidates — Optional
+      </span>
+      <p className="font-semibold text-gray-800 text-sm leading-snug mb-1">{block.label}</p>
+      {block.note && <p className="text-xs text-gray-400 mb-2">{block.note}</p>}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400 mb-4">
+        <span className="flex items-center gap-1"><Clk />{fmt12(block.start)} – {fmt12(block.end)}</span>
+        {block.venue && <span className="flex items-center gap-1"><Pin />{block.venue}</span>}
+      </div>
+      <p className="text-xs text-gray-500 mb-3">Are you selected for this activity?</p>
+      <div className="flex gap-2">
+        <button onClick={() => onChoose(block.optKey, true)} data-testid={`btn-yes-${block.optKey}`}
+          className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
+          style={{ background: 'linear-gradient(135deg,#5B4FE8,#7C3AED)' }}>
+          Yes, I'm Selected
+        </button>
+        <button onClick={() => onChoose(block.optKey, false)} data-testid={`btn-no-${block.optKey}`}
+          className="flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 border-purple-200 text-[#5B4FE8] hover:bg-purple-50 transition-colors">
+          Not Selected
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── BLOCK STYLES ─────────────────────────────────────────────────────────────
+const BLOCK_STYLES = {
+  breakfast: { grad: ['#F59E0B','#D97706'], shadow: 'rgba(245,158,11,0.25)', label: 'Breakfast' },
+  lunch:     { grad: ['#10B981','#059669'], shadow: 'rgba(16,185,129,0.25)', label: 'Lunch'     },
+  dinner:    { grad: ['#8B5CF6','#7C3AED'], shadow: 'rgba(139,92,246,0.25)', label: 'Dinner'    },
+};
+
+function MealBlock({ block }) {
+  const s = BLOCK_STYLES[block.type];
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-14 text-right text-xs text-gray-400 flex-shrink-0">{fmt12(block.start)}</span>
+      <div className="flex-1 rounded-2xl px-4 py-3 flex items-center gap-3"
+        style={{ background: `linear-gradient(135deg,${s.grad[0]},${s.grad[1]})`, boxShadow: `0 4px 12px ${s.shadow}` }}>
+        <Fork />
+        <div>
+          <p className="font-bold text-white text-sm">{block.label}</p>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.75)' }}>{fmt12(block.start)} – {fmt12(block.end)}{block.venue ? ` · ${block.venue}` : ''}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimeBlock({ block, onChoose }) {
+  if (block.type === 'optional' && !block._resolved) return <OptionalCard block={block} onChoose={onChoose} />;
+
+  if (block.type === 'sleep') return (
+    <div className="flex items-center gap-3 px-2 py-1">
+      <span className="w-14 text-right text-xs text-gray-300 flex-shrink-0">{fmt12(block.start)}</span>
+      <div className="flex items-center gap-2 text-gray-300 py-1">
+        <Moon /><span className="text-xs">{block.label}</span>
+      </div>
+    </div>
+  );
+
+  if (block.type === 'free') return (
+    <div className="flex items-start gap-3">
+      <span className="w-14 text-right text-xs text-gray-400 flex-shrink-0 pt-2">{fmt12(block.start)}</span>
+      <div className="flex-1 border border-dashed border-purple-100 rounded-xl px-3 py-2">
+        <span className="text-xs text-gray-400 font-medium">{block.label}</span>
+        {block.note && <p className="text-xs text-gray-300 mt-0.5">{block.note}</p>}
+      </div>
+    </div>
+  );
+
+  if (block.type === 'arrival') return (
+    <div className="flex items-start gap-3 fade-up">
+      <span className="w-14 text-right text-xs text-gray-400 flex-shrink-0 pt-3.5"></span>
+      <div className="flex-1 rounded-2xl p-4"
+        style={{ background: 'linear-gradient(135deg,#5B4FE8,#7C3AED)', boxShadow: '0 8px 24px rgba(91,79,232,0.25)' }}>
+        <span className="inline-block text-xs font-bold bg-white/25 px-2.5 py-0.5 rounded-full uppercase tracking-wide mb-2 text-white">Arrival Day</span>
+        <p className="font-bold text-white text-sm mb-2">{block.label}</p>
+        {block.note && <p className="text-xs text-white/70">{block.note}</p>}
+        {block.venue && <p className="text-xs text-white/70 flex items-center gap-1 mt-1"><Pin />{block.venue}</p>}
+      </div>
+    </div>
+  );
+
+  if (block.type === 'breakfast') return <MealBlock block={block} />;
+  if (block.type === 'lunch')     return <MealBlock block={block} />;
+  if (block.type === 'dinner')    return <MealBlock block={block} />;
+
+  // mandatory / orientation sessions
+  if (block.type === 'mandatory') return (
+    <div className="flex items-start gap-3 fade-up">
+      <span className="w-14 text-right text-xs text-gray-400 flex-shrink-0 pt-3.5">{fmt12(block.start)}</span>
+      <div className="flex-1 rounded-2xl p-4" style={{ background: 'linear-gradient(135deg,#F97066,#FB923C)', boxShadow: '0 6px 20px rgba(249,112,102,0.28)' }}>
+        <span className="inline-block text-xs font-bold bg-white/25 px-2.5 py-0.5 rounded-full uppercase tracking-wide mb-2 text-white">Mandatory — All Students</span>
+        <p className="font-bold text-white text-sm leading-snug mb-2">{block.label}</p>
+        {block.note && <p className="text-xs text-white/75 mb-2">{block.note}</p>}
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/75">
+          <span className="flex items-center gap-1"><Clk />{fmt12(block.start)} – {fmt12(block.end)}</span>
+          {block.venue && <span className="flex items-center gap-1"><Pin />{block.venue}</span>}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Great Ideas Seminar
+  if (block.type === 'seminar') return (
+    <div className="flex items-start gap-3 fade-up">
+      <span className="w-14 text-right text-xs text-gray-400 flex-shrink-0 pt-3.5">{fmt12(block.start)}</span>
+      <div className="flex-1 rounded-2xl p-4" style={{ background: 'linear-gradient(135deg,#0EA5E9,#2563EB)', boxShadow: '0 6px 20px rgba(14,165,233,0.28)' }}>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="inline-block text-xs font-bold bg-white/25 px-2.5 py-0.5 rounded-full uppercase tracking-wide text-white">Great Ideas Seminar · Mandatory</span>
+        </div>
+        <p className="font-bold text-white text-sm leading-snug mb-1">{block.label}</p>
+        {block.speaker && (
+          <p className="text-sm text-white font-semibold mb-2 flex items-center gap-1.5">
+            <PersonIco />{block.speaker}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/75">
+          <span className="flex items-center gap-1"><Clk />{fmt12(block.start)} – {fmt12(block.end)}</span>
+          {block.venue && <span className="flex items-center gap-1"><Pin />{block.venue}</span>}
+        </div>
+      </div>
+    </div>
+  );
+
+  // open to all
+  if (block.type === 'open') return (
+    <div className="flex items-start gap-3 fade-up">
+      <span className="w-14 text-right text-xs text-gray-400 flex-shrink-0 pt-3.5">{fmt12(block.start)}</span>
+      <div className="flex-1 rounded-2xl p-4 border-2 border-teal-200 bg-teal-50">
+        <span className="inline-block text-xs font-bold bg-teal-100 text-teal-700 px-2.5 py-0.5 rounded-full uppercase tracking-wide mb-2">Open to All</span>
+        <p className="font-semibold text-gray-800 text-sm leading-snug mb-1">{block.label}</p>
+        {block.note && <p className="text-xs text-gray-500 mb-2">{block.note}</p>}
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+          <span className="flex items-center gap-1"><Clk />{fmt12(block.start)} – {fmt12(block.end)}</span>
+          {block.venue && <span className="flex items-center gap-1"><Pin />{block.venue}</span>}
+        </div>
+      </div>
+    </div>
+  );
+
+  // course (Junior Track or resolved Selected Activity)
+  const isJrMath = block.subject && block.subject.includes('Mathematics');
+  const isSci    = block.subject && block.subject.includes('Science');
+  const gradFrom = isJrMath ? '#5B4FE8' : isSci ? '#0EA5E9' : '#10B981';
+  const gradTo   = isJrMath ? '#7C3AED' : isSci ? '#06B6D4' : '#059669';
+  const shadowC  = isJrMath ? 'rgba(91,79,232,0.25)' : isSci ? 'rgba(14,165,233,0.25)' : 'rgba(16,185,129,0.25)';
+
+  return (
+    <div className="flex items-start gap-3 fade-up">
+      <span className="w-14 text-right text-xs text-gray-400 flex-shrink-0 pt-3.5">{fmt12(block.start)}</span>
+      <div className="flex-1 rounded-2xl p-4 text-white" style={{ background: `linear-gradient(135deg,${gradFrom},${gradTo})`, boxShadow: `0 8px 24px ${shadowC}` }}>
+        {block.subject && <span className="inline-block text-xs font-semibold bg-white/20 px-2.5 py-0.5 rounded-full mb-2">{block.subject}</span>}
+        <p className="font-bold text-sm leading-snug mb-2">{block.name || block.label}</p>
+        {block.note && <p className="text-xs mb-2" style={{ color: 'rgba(255,255,255,0.7)' }}><InfoIco /> {block.note}</p>}
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'rgba(255,255,255,0.75)' }}>
+          <span className="flex items-center gap-1"><Clk />{fmt12(block.start)} – {fmt12(block.end)}</span>
+          {block.venue && <span className="flex items-center gap-1"><Pin />{block.venue}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SCHEDULE TIMELINE ────────────────────────────────────────────────────────
+function ScheduleTimeline({ date, schedule, choices, onChoose }) {
+  const key = dateKey(date);
+
+  if (key === '2026-05-16') {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 px-6 text-center fade-up">
+        <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#5B4FE8,#7C3AED)' }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+        <h3 className="font-bold text-gray-700 mb-1">Arrival Day</h3>
+        <p className="text-sm text-gray-400">Selected candidates arrive at Ashoka University Campus today. Pack up and head to Sonipat!</p>
+      </div>
+    );
+  }
+
+  if (!schedule) return (
+    <div className="flex flex-col items-center justify-center py-14 px-6 text-center fade-up">
+      <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mb-4"><CalIco /></div>
+      <h3 className="font-bold text-gray-600 mb-1">No program today</h3>
+      <p className="text-sm text-gray-400">Enjoy your free day! LG-AUP 2026 runs May 17 – June 14, 2026.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-2.5 fade-up">
+      {schedule.map((block, i) => <TimeBlock key={block.id || i} block={block} onChoose={onChoose} />)}
+    </div>
+  );
+}
+
+// ─── WEEK STRIP (mobile) ──────────────────────────────────────────────────────
+const DAY_ABBR = ['Mo','Tu','We','Th','Fr','Sa','Su'];
+
+function WeekStrip({ selected, onSelect }) {
+  const wkStart = startOfWeek(selected, { weekStartsOn: 1 });
+  const days    = Array.from({ length: 7 }, (_, i) => addDays(wkStart, i));
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-purple-50 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={() => onSelect(addDays(selected, -7))} data-testid="btn-prev-week"
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-purple-50 text-[#5B4FE8] transition-colors"><ChevL /></button>
+        <span className="text-sm font-semibold text-[#3730A3]">{format(selected, 'MMMM yyyy')}</span>
+        <button onClick={() => onSelect(addDays(selected, 7))} data-testid="btn-next-week"
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-purple-50 text-[#5B4FE8] transition-colors"><ChevR /></button>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((day, i) => {
+          const sel  = isSameDay(day, selected);
+          const tod  = isToday(day);
+          const prog = inDisplayProgram(day);
+          return (
+            <button key={i} onClick={() => onSelect(day)} data-testid={`strip-${i}`}
+              className={`flex flex-col items-center py-2 rounded-xl transition-all ${!sel && tod ? 'bg-purple-50 text-[#5B4FE8]' : !sel ? 'hover:bg-gray-50 text-gray-600' : ''}`}
+              style={sel ? { background: 'linear-gradient(135deg,#5B4FE8,#7C3AED)', color: 'white', boxShadow: '0 4px 12px rgba(91,79,232,0.35)' } : {}}>
+              <span className="text-xs font-medium mb-0.5">{DAY_ABBR[i]}</span>
+              <span className="text-sm font-bold">{format(day, 'd')}</span>
+              {prog && !sel && <span className="w-1 h-1 rounded-full bg-[#5B4FE8] opacity-35 mt-1 block" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── MONTH CALENDAR (desktop) ─────────────────────────────────────────────────
+function MonthCalendar({ selected, onSelect }) {
+  const [view, setView] = useState(() => startOfMonth(selected));
+  const days = useMemo(() => {
+    const mS = startOfMonth(view), mE = endOfMonth(view);
+    const cS = startOfWeek(mS, { weekStartsOn: 0 }), cE = endOfWeek(mE, { weekStartsOn: 0 });
+    const arr = []; let c = cS;
+    while (c <= cE) { arr.push(c); c = addDays(c, 1); }
+    return arr;
+  }, [view]);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-purple-50 p-5">
+      <div className="flex items-center justify-between mb-5">
+        <button onClick={() => setView(subMonths(view,1))} data-testid="btn-prev-month"
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-purple-50 text-[#5B4FE8] transition-colors"><ChevL /></button>
+        <span className="font-bold text-[#3730A3]">{format(view,'MMMM yyyy')}</span>
+        <button onClick={() => setView(addMonths(view,1))} data-testid="btn-next-month"
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-purple-50 text-[#5B4FE8] transition-colors"><ChevR /></button>
+      </div>
+      <div className="grid grid-cols-7 mb-1">
+        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+          <div key={d} className="text-center text-xs font-semibold text-gray-300 py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-y-1">
+        {days.map((day, i) => {
+          const sel   = isSameDay(day, selected);
+          const tod   = isToday(day);
+          const inMon = isSameMonth(day, view);
+          const prog  = inDisplayProgram(day);
+          return (
+            <button key={i} onClick={() => onSelect(day)} data-testid={`cal-${i}`}
+              className={`relative aspect-square flex items-center justify-center rounded-xl text-sm font-medium transition-all ${
+                !inMon ? 'text-gray-200' : !sel && tod ? 'bg-purple-50 text-[#5B4FE8] font-semibold' :
+                !sel && prog ? 'text-gray-700 hover:bg-purple-50' : !sel ? 'text-gray-400 hover:bg-gray-50' : ''
+              }`}
+              style={sel ? { background: 'linear-gradient(135deg,#5B4FE8,#7C3AED)', color: 'white', fontWeight: 700, boxShadow: '0 4px 14px rgba(91,79,232,0.38)' } : {}}>
+              {format(day, 'd')}
+              {prog && !sel && inMon && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5B4FE8] opacity-30" />}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-5 pt-4 border-t border-purple-50 space-y-1">
+        <p className="text-xs font-bold text-gray-300 uppercase tracking-wide">LG-AUP 2026</p>
+        <p className="text-xs text-gray-500">Arrival May 16 · Program May 17 – June 14</p>
+        <p className="text-xs text-gray-500">Ashoka University, Sonipat</p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="w-2 h-2 rounded-full bg-[#5B4FE8] opacity-30 inline-block" />
+          <span className="text-xs text-gray-400">Program day</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── NOTIFICATION PANEL ───────────────────────────────────────────────────────
+function NotifPanel({ selected, schedule }) {
+  const supported = typeof Notification !== 'undefined';
+  const [perm,    setPerm   ] = useState(() => supported ? Notification.permission : 'denied');
+  const [enabled, setEnabled] = useState(() => localStorage.getItem('notif-on') === '1');
+
+  const upcoming = useMemo(() => {
+    if (!schedule) return [];
+    const relevant = ['course','seminar','mandatory','breakfast','lunch','dinner'];
+    return schedule
+      .filter(b => relevant.includes(b.type))
+      .map(b => ({ ...b, t: timeOnDate(b.start, selected) }))
+      .filter(b => isSameDay(selected, new Date()) ? isAfter(b.t, new Date()) : true)
+      .map(b => ({ ...b, mins: Math.max(0, differenceInMinutes(b.t, new Date())) }));
+  }, [schedule, selected]);
+
+  async function requestPerm() {
+    if (!supported) return;
+    const p = await Notification.requestPermission();
+    setPerm(p);
+    if (p === 'granted') { setEnabled(true); localStorage.setItem('notif-on','1'); }
+  }
+  function toggle() {
+    if (!enabled && perm !== 'granted') { requestPerm(); return; }
+    const next = !enabled;
+    setEnabled(next);
+    localStorage.setItem('notif-on', next ? '1' : '0');
+  }
+  const isOn = enabled && perm === 'granted';
+
+  return (
+    <div className="absolute right-0 top-12 bg-white rounded-2xl shadow-2xl border border-purple-100 z-50 overflow-hidden slide-down"
+      style={{ width: '17.5rem' }}>
+      <div className="p-4 border-b border-purple-50">
+        <div className="flex items-center justify-between">
+          <p className="font-bold text-[#3730A3] text-sm">Notifications</p>
+          <button onClick={toggle} data-testid="toggle-notif"
+            className="relative w-10 h-6 rounded-full transition-colors flex-shrink-0"
+            style={{ background: isOn ? '#5B4FE8' : '#E5E7EB' }}>
+            <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${isOn ? 'translate-x-5' : 'translate-x-1'}`} />
+          </button>
+        </div>
+        {perm === 'denied' && <p className="text-xs text-red-400 mt-1.5">Blocked. Enable in browser site settings.</p>}
+        {perm === 'default' && (
+          <button onClick={requestPerm} data-testid="btn-enable-notif"
+            className="mt-2 w-full text-xs font-semibold text-white py-2 rounded-xl"
+            style={{ background: 'linear-gradient(135deg,#5B4FE8,#7C3AED)' }}>
+            Enable Browser Notifications
+          </button>
+        )}
+      </div>
+      <div className="p-4">
+        <p className="text-xs font-bold text-gray-300 uppercase tracking-wide mb-3">
+          {isSameDay(selected, new Date()) ? "Today's Schedule" : format(selected,'MMM d') + ' Schedule'}
+        </p>
+        {upcoming.length === 0 ? (
+          <p className="text-sm text-gray-300 text-center py-5">No upcoming events.</p>
+        ) : (
+          <div className="space-y-2 max-h-64 overflow-y-auto hide-scroll">
+            {upcoming.map((r, i) => {
+              const colors = r.type === 'course' ? '#5B4FE8' : r.type === 'seminar' ? '#0EA5E9' : r.type === 'breakfast' ? '#F59E0B' : r.type === 'lunch' ? '#10B981' : r.type === 'dinner' ? '#8B5CF6' : '#F97066';
+              return (
+                <div key={i} className="flex items-start gap-3 p-2.5 rounded-xl bg-purple-50/60">
+                  <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: colors }} />
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 leading-snug">{r.name || r.label}</p>
+                    <p className="text-xs mt-0.5" style={{ color: colors }}>
+                      {isSameDay(selected,new Date()) && r.mins < 120 ? `In ${r.mins} min · ` : ''}{fmt12(r.start)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── HEADER ───────────────────────────────────────────────────────────────────
+function Header({ selected, schedule }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const badge = useMemo(() => {
+    if (!schedule || !isSameDay(selected, new Date())) return 0;
+    const now = new Date();
+    return schedule.filter(b =>
+      ['course','seminar','mandatory'].includes(b.type) &&
+      isAfter(timeOnDate(b.start, selected), now)
+    ).length;
+  }, [schedule, selected]);
+
+  useEffect(() => {
+    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  return (
+    <div className="text-white px-5 py-4 rounded-2xl shadow-xl mb-4"
+      style={{ background: 'linear-gradient(135deg,#5B4FE8,#7C3AED)', boxShadow: '0 8px 28px rgba(91,79,232,0.3)' }}>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full">LG-AUP 2026</span>
+            <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full">Junior Track</span>
+          </div>
+          <h1 className="font-extrabold text-xl leading-tight">My Course Schedule</h1>
+          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>Ashoka University · May 17 – June 14</p>
+        </div>
+        <div className="relative" ref={ref}>
+          <button onClick={() => setOpen(p => !p)} data-testid="btn-bell"
+            className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors"
+            style={{ background: 'rgba(255,255,255,0.15)' }}
+            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.25)'}
+            onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.15)'}>
+            <BellSVG />
+          </button>
+          {badge > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 bg-[#F97066] rounded-full text-xs font-extrabold text-white flex items-center justify-center pointer-events-none border-2 border-[#5B4FE8] z-10">
+              {badge}
+            </span>
+          )}
+          {open && <NotifPanel selected={selected} schedule={schedule} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+function App() {
+  const [selected, setSelected] = useState(new Date(2026, 4, 17)); // May 17 orientation day
+  const [choices, setChoices] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('opt-choices') || '{}'); }
+    catch { return {}; }
+  });
+
+  const schedule = useMemo(() => buildSchedule(selected, choices), [selected, choices]);
+
+  function handleChoose(key, val) {
+    const next = { ...choices, [key]: val };
+    setChoices(next);
+    localStorage.setItem('opt-choices', JSON.stringify(next));
+  }
+
+  // Browser notifications
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted' || localStorage.getItem('notif-on') !== '1') return;
+    if (!schedule || !isSameDay(selected, new Date())) return;
+    const timers = schedule
+      .filter(b => ['course','seminar','mandatory'].includes(b.type))
+      .map(b => {
+        const delay = addMinutes(timeOnDate(b.start, selected), -15) - new Date();
+        if (delay <= 0) return null;
+        return setTimeout(() => new Notification(`Starting in 15 min: ${b.name || b.label}`, { body: `${fmt12(b.start)}${b.venue ? ' · '+b.venue : ''}` }), delay);
+      }).filter(Boolean);
+    return () => timers.forEach(clearTimeout);
+  }, [schedule, selected]);
+
+  const dateLabel   = format(selected, 'EEEE, MMMM d');
+  const isProgRange = inDisplayProgram(selected);
+
+  return (
+    <div className="min-h-screen p-4 md:p-6 max-w-6xl mx-auto" style={{ background: '#F3F2FC' }}>
+      <Header selected={selected} schedule={schedule} />
+
+      {/* ── MOBILE ── */}
+      <div className="lg:hidden space-y-4">
+        <WeekStrip selected={selected} onSelect={setSelected} />
+        <div>
+          <h2 className="text-xl font-extrabold text-[#1E1B4B] mb-0.5">{dateLabel}</h2>
+          {!isProgRange && <p className="text-xs text-gray-400">Outside program dates.</p>}
+        </div>
+        <ScheduleTimeline date={selected} schedule={schedule} choices={choices} onChoose={handleChoose} />
+      </div>
+
+      {/* ── DESKTOP ── */}
+      <div className="hidden lg:grid lg:grid-cols-[310px_1fr] gap-6 items-start">
+        <div className="sticky top-6 space-y-4">
+          <MonthCalendar selected={selected} onSelect={setSelected} />
+        </div>
+        <div>
+          <div className="mb-5">
+            <h2 className="text-2xl font-extrabold text-[#1E1B4B]">{dateLabel}</h2>
+            {!isProgRange && <p className="text-sm text-gray-400 mt-1">Outside program dates.</p>}
+          </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-purple-50 p-6">
+            <ScheduleTimeline date={selected} schedule={schedule} choices={choices} onChoose={handleChoose} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
